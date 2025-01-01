@@ -11,6 +11,14 @@ struct Args {
     // image path
     #[arg(short, long)]
     path: String,
+
+    // number of attempts
+    #[arg(short, long, default_value_t = 10_000)]
+    attempts: u32,
+
+    // triage crashes
+    #[arg(short, long)]
+    triage: bool,
 }
 
 #[allow(
@@ -64,7 +72,7 @@ fn magic(rng: &mut ThreadRng, data: &mut [u8]) {
     }
 }
 
-fn handle_crash(data: &[u8], index: i32, method: &str) -> io::Result<()> {
+fn handle_crash(data: &[u8], index: u32, method: &str) -> io::Result<()> {
     if !fs::exists("crashes/").unwrap_or(false) {
         fs::create_dir(Path::new("crashes/"))?;
     }
@@ -76,7 +84,6 @@ fn handle_crash(data: &[u8], index: i32, method: &str) -> io::Result<()> {
 
 fn main() -> io::Result<()> {
     let args = Args::parse();
-    let tries = 10_000;
     let mut total_crashes = 0;
     let mut bitflip_crashes = 0;
     let mut magic_crashes = 0;
@@ -86,7 +93,8 @@ fn main() -> io::Result<()> {
     let mut data: Vec<u8> = vec![];
     utils::get_file_contents(&mut data, &args.path)?;
 
-    for i in 0..tries {
+    // TODO: user input attempts needs to be validated
+    for i in 0..args.attempts {
         let mut data_clone = data.clone();
         let mut crash_method = "";
 
@@ -125,6 +133,8 @@ fn main() -> io::Result<()> {
     );
 
     // Create reports
-    triage::triage_crashes()?;
+    if args.triage {
+        triage::triage_crashes()?;
+    }
     Ok(())
 }
