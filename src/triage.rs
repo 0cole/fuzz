@@ -41,12 +41,13 @@ fn create_report(path: &Path) -> io::Result<()> {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // If one of the three is missing, then return early
-    let Some((crash_condition, address, io_type)) = parse_output(&combined) else {
-        println!("Error: Unable to parse output for path: {}", path.display());
-        return Ok(());
+    // If one of the three is missing, label that report as unparsable
+    let mut report_path = String::new();
+    if let Some((crash_condition, address, io_type)) = parse_output(&combined) {
+        report_path = format!("reports/{file_details}.{crash_condition}.{address}.{io_type}");
+    } else {
+        report_path = format!("reports/UNPARSABLE-ERROR.{file_details}.jpg");
     };
-    let report_path = format!("reports/{file_details}.{crash_condition}.{address}.{io_type}");
     utils::write_to_file(combined.as_bytes(), &report_path)?;
 
     Ok(())
