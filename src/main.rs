@@ -22,11 +22,11 @@ fn get_file_contents(buf: &mut Vec<u8>, path: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn write_to_file(data: &mut [u8]) -> io::Result<()> {
-    if fs::exists("images/mutate.jpg").unwrap() {
-        fs::remove_file("images/mutate.jpg")?;
+fn write_to_file(data: &[u8], path: &str) -> io::Result<()> {
+    if fs::exists(path).unwrap() {
+        fs::remove_file(path)?;
     }
-    let mut f = File::create_new("images/mutate.jpg")?;
+    let mut f = File::create_new(path)?;
     f.write_all(data)?;
     Ok(())
 }
@@ -97,35 +97,50 @@ fn magic(rng: &mut ThreadRng, data: &mut [u8]) {
     }
 }
 
+fn handle_crash(data: &[u8], index: i32) -> io::Result<()> {
+    if !fs::exists("crashes/").unwrap_or(false) {
+        fs::create_dir(Path::new("crashes/"))?;
+    }
+    let path = format!("crashes/crash-{index}.jpg");
+    write_to_file(data, &path)?;
+
+    Ok(())
+}
+
 fn main() -> io::Result<()> {
     let args = Args::parse();
+    let tries = 10_000;
+    let mut total_crashes = 0;
 
     // init rng and get file contents once
-    let mut rng = rand::thread_rng();
-    let mut byte_array: Vec<u8> = vec![];
-    get_file_contents(&mut byte_array, &args.path)?;
+    let mut rng: ThreadRng = rand::thread_rng();
+    let mut data: Vec<u8> = vec![];
+    get_file_contents(&mut data, &args.path)?;
 
-    for i in 0..100_000 {
-        let mut byte_array_clone = byte_array.clone();
+    for i in 0..tries {
+        let mut data_clone = data.clone();
 
         // manipulate jpg
         if rng.gen_bool(0.5) {
-            bitflip_data(&mut rng, &mut byte_array_clone);
+            bitflip_data(&mut rng, &mut data_clone);
         } else {
-            magic(&mut rng, &mut byte_array_clone);
+            magic(&mut rng, &mut data_clone);
         }
 
-        write_to_file(&mut byte_array_clone)?;
+        write_to_file(&data_clone, "images/mutate.jpg")?;
 
         // execute command
-        let output = Command::new("./exif")
+        let output = Command::new("./binaries/exif")
             .args(["images/mutate.jpg"])
             .output()?;
 
         // 11 == segfault
         if output.status.signal().unwrap_or(0) == 11 {
-            println!("Hit on index {i}");
+            handle_crash(&data_clone, i)?;
+            total_crashes += 1;
         }
     }
+
+    println!("Program finished. Total crashes: {total_crashes}.");
     Ok(())
 }
