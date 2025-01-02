@@ -1,6 +1,8 @@
 /target
 /binaries
 /crashes
+/dos
+/save
 /images
 /reports
 /test-repos
