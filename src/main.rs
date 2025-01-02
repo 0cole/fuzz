@@ -3,7 +3,13 @@ mod utils;
 
 use clap::Parser;
 use rand::{rngs::ThreadRng, Rng};
-use std::{fs, io, os::unix::process::ExitStatusExt, path::Path, process::Command};
+use std::{
+    fs,
+    io::{self, Write},
+    os::unix::process::ExitStatusExt,
+    path::Path,
+    process::Command,
+};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -93,8 +99,13 @@ fn main() -> io::Result<()> {
     let mut data: Vec<u8> = vec![];
     utils::get_file_contents(&mut data, &args.path)?;
 
-    // TODO: user input attempts needs to be validated
     for i in 0..args.attempts {
+        // update status
+        if i % 100 == 0 {
+            print!("\rAttempt: {i}");
+            io::stdout().flush()?;
+        }
+
         let mut data_clone = data.clone();
         let mut crash_method = "";
 

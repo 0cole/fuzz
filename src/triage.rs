@@ -32,7 +32,7 @@ fn create_report(path: &Path) -> io::Result<()> {
     let file_details = file_details.strip_suffix(".jpg").unwrap();
 
     let path_str = path.to_str().unwrap();
-    let output = Command::new("./binaries/exif-sanitize")
+    let output = Command::new("./binaries/exifsan")
         .args([path_str])
         .output()?;
     let combined = format!(
