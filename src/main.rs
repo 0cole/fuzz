@@ -133,8 +133,8 @@ fn mutate(
     Ok(fuzz_method)
 }
 
-fn handle_dos(data: &[u8], index: u32, method: &str) -> io::Result<()> {
-    let path = format!("dos/dos.{method}.{index}.jpg");
+fn handle_dos(data: &[u8], index: u32, method: &str, process_time: u128) -> io::Result<()> {
+    let path = format!("dos/dos.{process_time}.ms.{method}.{index}.jpg");
     utils::write_to_file(data, &path)?;
     Ok(())
 }
@@ -154,6 +154,8 @@ fn main() -> io::Result<()> {
     let mut bitflip_crashes = 0;
     let mut magic_crashes = 0;
 
+    let mut avg_time: u128 = 100; // some small time to start out (100 ms)
+
     // init rng and data from input image
     let (mut rng, data) = initialize(&args.path)?;
 
@@ -171,16 +173,19 @@ fn main() -> io::Result<()> {
         mutate_buffer.copy_from_slice(&data);
         let fuzz_method = mutate(&mut rng, &mut mutate_buffer, args.mutation_rate)?;
 
-        // execute command
+        // execute command and track runtime
         let now = Instant::now();
-        let output = Command::new("binaries/ok-jpg-size")
+        let output = Command::new("binaries/ok-jpg-binary")
             // .args(["images/mutate.jpg"])
             .output()?;
-        let elapsed_time = now.elapsed();
+        let process_time = now.elapsed();
 
-        // check for dos
-        if elapsed_time.as_secs() > 2 {
-            handle_dos(&mutate_buffer, i, fuzz_method)?;
+        // add new time to avg_time
+        avg_time = (avg_time + (i as u128) + process_time.as_millis()) / (i + 1) as u128;
+
+        // check for dos after first 100 attempts
+        if i > 100 && process_time.as_millis() > avg_time * 50 {
+            handle_dos(&mutate_buffer, i, fuzz_method, process_time.as_millis())?;
             dos_counter += 1;
         }
 
