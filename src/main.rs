@@ -1,8 +1,9 @@
+mod mutate;
 mod triage;
 mod utils;
 
 use clap::Parser;
-use rand::{rngs::ThreadRng, Rng};
+use rand::rngs::ThreadRng;
 use std::{
     fs,
     io::{self, Write},
@@ -14,19 +15,6 @@ use std::{
 
 const SEG_SIG: i32 = 11; // seg fault
 const FPE_SIG: i32 = 8; // floating point exception
-const MAGIC_NUMBERS: [(usize, u8); 11] = [
-    (1, 255),
-    (1, 255),
-    (1, 127),
-    (1, 0),
-    (2, 255),
-    (2, 0),
-    (4, 255),
-    (4, 0),
-    (4, 128),
-    (4, 64),
-    (4, 127),
-];
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -77,62 +65,6 @@ fn initialize(path: &str) -> io::Result<(ThreadRng, Vec<u8>)> {
     Ok((rng, data))
 }
 
-#[allow(
-    clippy::cast_precision_loss,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
-)]
-fn apply_bitflip(rng: &mut ThreadRng, data: &mut [u8], mutation_rate: f64) {
-    let mutation_num = (((data.len() as f64) - 4.0) * mutation_rate) as i64;
-    let mut indices = vec![];
-
-    // collect indices
-    for _ in 4..mutation_num {
-        let chosen_index = rng.gen_range(4..(data.len() - 4));
-        indices.push(chosen_index);
-    }
-
-    for index in indices {
-        let mut bits = utils::to_bits(data[index]);
-        let rand_index = rng.gen_range(0..8);
-        bits[rand_index] ^= 1;
-        data[index] = utils::to_u8(&bits);
-    }
-}
-
-fn magic(rng: &mut ThreadRng, data: &mut [u8]) {
-    let len = data.len() - 8;
-    let chosen_index = rng.gen_range(0..len);
-
-    let choice = rng.gen_range(0..MAGIC_NUMBERS.len());
-    let (num_magic_bytes, value) = MAGIC_NUMBERS[choice];
-
-    let mut counter = 0;
-    while counter < num_magic_bytes {
-        data[chosen_index + counter] = value;
-        counter += 1;
-    }
-}
-
-fn mutate(
-    rng: &mut ThreadRng,
-    data_buf: &mut [u8],
-    mutation_rate: f64,
-) -> io::Result<&'static str> {
-    // manipulate jpg, save the method used for statistics if it does produce a crash
-    let fuzz_method = if rng.gen_bool(0.5) {
-        apply_bitflip(rng, data_buf, mutation_rate);
-        "bitflip"
-    } else {
-        magic(rng, data_buf);
-        "magic"
-    };
-    // write manipulated data to a temp mutate file
-    utils::write_to_file(data_buf, "images/mutate.jpg")?;
-
-    Ok(fuzz_method)
-}
-
 fn handle_dos(data: &[u8], index: u32, method: &str, process_time: u128) -> io::Result<()> {
     let path = format!("dos/dos.{process_time}.ms.{method}.{index}.jpg");
     utils::write_to_file(data, &path)?;
@@ -171,7 +103,7 @@ fn main() -> io::Result<()> {
 
         // reset buffer and mutate it slightly once again
         mutate_buffer.copy_from_slice(&data);
-        let fuzz_method = mutate(&mut rng, &mut mutate_buffer, args.mutation_rate)?;
+        let fuzz_method = mutate::mutate_input(&mut rng, &mut mutate_buffer, args.mutation_rate)?;
 
         // execute command and track runtime
         let now = Instant::now();
