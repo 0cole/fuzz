@@ -22,7 +22,7 @@ const MAGIC_NUMBERS: [(usize, u8); 11] = [
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss
 )]
-fn apply_bitflip(rng: &mut ThreadRng, data: &mut [u8], mutation_rate: f64) {
+fn bitflip(rng: &mut ThreadRng, data: &mut [u8], mutation_rate: f64) {
     let mutation_num = (((data.len() as f64) - 4.0) * mutation_rate) as i64;
     let mut indices = vec![];
 
@@ -54,21 +54,27 @@ fn magic(rng: &mut ThreadRng, data: &mut [u8]) {
     }
 }
 
+#[allow(clippy::module_name_repetitions)]
 pub fn mutate_input(
     rng: &mut ThreadRng,
     data_buf: &mut [u8],
     mutation_rate: f64,
 ) -> io::Result<&'static str> {
-    // manipulate jpg, save the method used for statistics if it does produce a crash
-    let fuzz_method = if rng.gen_bool(0.5) {
-        apply_bitflip(rng, data_buf, mutation_rate);
-        "bitflip"
-    } else {
-        magic(rng, data_buf);
-        "magic"
+    let fuzz_method = rng.gen_range(0..2);
+    let method_name = match fuzz_method {
+        0 => {
+            bitflip(rng, data_buf, mutation_rate);
+            "bitflip"
+        }
+        1 => {
+            magic(rng, data_buf);
+            "magic"
+        }
+        _ => unreachable!(),
     };
+
     // write manipulated data to a temp mutate file
     utils::write_to_file(data_buf, "images/mutate.jpg")?;
 
-    Ok(fuzz_method)
+    Ok(method_name)
 }

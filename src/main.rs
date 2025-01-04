@@ -107,7 +107,7 @@ fn main() -> io::Result<()> {
 
         // execute command and track runtime
         let now = Instant::now();
-        let output = Command::new("binaries/ok-jpg-binary")
+        let output = Command::new("binaries/ok-mutate")
             // .args(["images/mutate.jpg"])
             .output()?;
         let process_time = now.elapsed();
