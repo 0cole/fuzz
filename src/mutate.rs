@@ -1,7 +1,6 @@
-use std::io;
-
 use super::utils;
 use rand::{rngs::ThreadRng, Rng};
+use std::io;
 
 const MAGIC_NUMBERS: [(usize, u8); 11] = [
     (1, 255),
@@ -40,6 +39,25 @@ fn bitflip(rng: &mut ThreadRng, data: &mut [u8], mutation_rate: f64) {
     }
 }
 
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+fn insertion(rng: &mut ThreadRng, data: &mut Vec<u8>, insertion_rate: f64) {
+    let insertion_num = (((data.len() as f64) - 4.0) * insertion_rate) as i64;
+    let mut indicies = vec![];
+
+    // collect indicies to insert fake bytes at. do so in a bottom-up approach
+    for _ in 4..insertion_num {
+        let chosen_index = rng.gen_range(4..(data.len() - 4));
+        indicies.push(chosen_index);
+    }
+    indicies.sort_unstable();
+    indicies.reverse();
+    for index in indicies {
+        // i think it would be a good idea to start from 0x00 and go to 0xff
+        let insertion_byte: u8 = rng.gen_range(0..255);
+        data.insert(index, insertion_byte);
+    }
+}
+
 fn magic(rng: &mut ThreadRng, data: &mut [u8]) {
     let len = data.len() - 8;
     let chosen_index = rng.gen_range(0..len);
@@ -57,16 +75,20 @@ fn magic(rng: &mut ThreadRng, data: &mut [u8]) {
 #[allow(clippy::module_name_repetitions)]
 pub fn mutate_input(
     rng: &mut ThreadRng,
-    data_buf: &mut [u8],
+    data_buf: &mut Vec<u8>,
     mutation_rate: f64,
 ) -> io::Result<&'static str> {
-    let fuzz_method = rng.gen_range(0..2);
+    let fuzz_method = rng.gen_range(0..3);
     let method_name = match fuzz_method {
         0 => {
             bitflip(rng, data_buf, mutation_rate);
             "bitflip"
         }
         1 => {
+            insertion(rng, data_buf, mutation_rate);
+            "insertion"
+        }
+        2 => {
             magic(rng, data_buf);
             "magic"
         }

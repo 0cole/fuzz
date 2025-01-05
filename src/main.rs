@@ -83,16 +83,17 @@ fn main() -> io::Result<()> {
     let mut dos_counter = 0;
     let mut seg_fault_crashes = 0;
     let mut floating_point_crashes = 0;
-    let mut bitflip_crashes = 0;
-    let mut magic_crashes = 0;
-
-    let mut avg_time: u128 = 100; // some small time to start out (100 ms)
+    let mut bitflip_events = 0;
+    let mut insertion_events = 0;
+    let mut deletion_events = 0;
+    let mut magic_events = 0;
+    let mut avg_time: u128 = 1; // some small time to start out (1 ms)
 
     // init rng and data from input image
     let (mut rng, data) = initialize(&args.path)?;
 
     // this is a mutable buffer that will be reset after every iteration
-    let mut mutate_buffer = vec![0u8; data.len()];
+    // let mut mutate_buffer = vec![0u8; data.len()];
 
     for i in 0..args.attempts {
         // update status
@@ -102,7 +103,8 @@ fn main() -> io::Result<()> {
         }
 
         // reset buffer and mutate it slightly once again
-        mutate_buffer.copy_from_slice(&data);
+        let mut mutate_buffer = data.clone();
+        let mut event_occurred = false; // true if crash/dos occurs
         let fuzz_method = mutate::mutate_input(&mut rng, &mut mutate_buffer, args.mutation_rate)?;
 
         // execute command and track runtime
@@ -116,47 +118,56 @@ fn main() -> io::Result<()> {
         avg_time = (avg_time + (i as u128) + process_time.as_millis()) / (i + 1) as u128;
 
         // check for dos after first 100 attempts
-        if i > 100 && process_time.as_millis() > avg_time * 50 {
+        // TODO: maybe implement a better method than ignoring the first 100 attempts.
+        // I am assuming that if 100k+ attempts occur, the likelihood of a bug occuring
+        // only once within the first 100 attempts is sorta low
+        if i > 100 && process_time.as_millis() > avg_time * 100 {
             handle_dos(&mutate_buffer, i, fuzz_method, process_time.as_millis())?;
+            event_occurred = true;
             dos_counter += 1;
         }
 
         // uncomment for debug
-        if i == 0 {
-            println!(
-                "stdout for first attempt: {}",
-                String::from_utf8_lossy(&output.stdout)
-            );
-        }
+        // if i == 0 {
+        //     println!(
+        //         "stdout for first attempt: {}",
+        //         String::from_utf8_lossy(&output.stdout)
+        //     );
+        // }
 
         if let Some(signal) = output.status.signal() {
             handle_crash(&mutate_buffer, i, fuzz_method)?;
-
             // stats stuff
             match signal {
                 SEG_SIG => seg_fault_crashes += 1,
                 FPE_SIG => floating_point_crashes += 1,
                 _ => println!("Unknown signal encountered: {signal}"),
             }
-            match fuzz_method {
-                "bitflip" => bitflip_crashes += 1,
-                "magic" => magic_crashes += 1,
-                _ => println!("this message should not be printed"),
-            }
+            event_occurred = true;
             crash_counter += 1;
+        }
+
+        if event_occurred {
+            match fuzz_method {
+                "bitflip" => bitflip_events += 1,
+                "insertion" => insertion_events += 1,
+                "magic" => magic_events += 1,
+                _ => unreachable!(),
+            }
         }
     }
     println!(
         "\rFuzzing finished
-Total crashes             : {crash_counter}
-Total denials of service  : {dos_counter}
-Segmentation faults       : {seg_fault_crashes}
-Floating point exceptions : {floating_point_crashes}
-Bitflip crashes           : {bitflip_crashes}
-Magic crashes             : {magic_crashes}"
+Total crashes               : {crash_counter}
+Total denials of service    : {dos_counter}
+Segmentation faults         : {seg_fault_crashes}
+Floating point exceptions   : {floating_point_crashes}
+Issues caused by bitflips   : {bitflip_events}
+Issues caused by insertions : {insertion_events}
+Issues caused by magic      : {magic_events}"
     );
 
-    // Create reports
+    // Create reports, i need to find some way to generalize this
     if args.triage {
         println!("Beginning triaging...");
         triage::triage_crashes()?;
