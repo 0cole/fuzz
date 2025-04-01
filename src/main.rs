@@ -7,9 +7,9 @@ use rand::rngs::ThreadRng;
 use std::{
     fs,
     io::{self, Write},
-    os::unix::process::ExitStatusExt,
+    os::unix::{fs::PermissionsExt, process::ExitStatusExt},
     path::Path,
-    process::Command,
+    process::{self, Command},
     time::Instant,
 };
 
@@ -42,6 +42,35 @@ struct Args {
     // triage crashes
     #[arg(short, long)]
     triage: bool,
+}
+
+fn validate_args(args: &Args) {
+    // check for valid binary path, validate it is a file and it hsa executable permissions
+    let binary_path = Path::new(&args.binary_path);
+    if !binary_path.is_file() || binary_path.metadata().unwrap().permissions().mode() & 0o111 == 0 {
+        eprintln!(
+            "Error: Binary path '{}' does not exist, is not a file, or is not excutable",
+            args.binary_path
+        );
+        process::exit(1);
+    }
+
+    // check for valid image path
+    let image_path = Path::new(&args.image_path);
+    if !image_path.is_file() {
+        eprintln!(
+            "Error: Image path '{}' does not exist or is a directory",
+            args.binary_path
+        );
+        process::exit(1);
+    }
+
+    // make sure 0 < mutation_rate < 1
+    let mutation_rate = args.mutation_rate;
+    if mutation_rate >= 1.0 {
+        eprintln!("Error: Mutation rate must be a value greater than 0 but less than 1");
+        process::exit(1);
+    }
 }
 
 fn initialize(path: &str) -> io::Result<(ThreadRng, Vec<u8>)> {
@@ -100,6 +129,8 @@ fn main() -> io::Result<()> {
     let mut magic_events = 0;
     let mut avg_time: u128 = 1; // some small time to start out (1 ms)
 
+    validate_args(&args);
+
     // init rng and data from input image
     let (mut rng, data) = initialize(&args.image_path)?;
 
@@ -136,7 +167,7 @@ fn main() -> io::Result<()> {
             dos_counter += 1;
         }
 
-        // print stdout for first attempt if debug is true
+        // print binary's stdout for first attempt if debug is true
         if args.debug && i == 0 {
             println!(
                 "stdout for first attempt: {}",
