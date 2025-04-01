@@ -58,6 +58,30 @@ fn insertion(rng: &mut ThreadRng, data: &mut Vec<u8>, insertion_rate: f64) {
     }
 }
 
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+fn deletion(rng: &mut ThreadRng, data: &mut Vec<u8>, deletion_rate: f64) {
+    let deletion_num = (((data.len() as f64) - 4.0) * deletion_rate) as usize;
+    let mut indicies = vec![];
+
+    for _ in 4..deletion_num {
+        // in the super unlikely case where every index occurs consecutively at the end,
+        // this function will panic, my immediate solution is to generate an index up until
+        // the last 'deletion_num' indicies
+        let chosen_index = rng.gen_range(4..data.len() - deletion_num);
+        indicies.push(chosen_index);
+    }
+    indicies.sort_unstable();
+    indicies.reverse();
+
+    for index in indicies {
+        data.remove(index);
+    }
+}
+
 fn magic(rng: &mut ThreadRng, data: &mut [u8]) {
     let len = data.len() - 8;
     let chosen_index = rng.gen_range(0..len);
@@ -78,7 +102,7 @@ pub fn mutate_input(
     data_buf: &mut Vec<u8>,
     mutation_rate: f64,
 ) -> io::Result<&'static str> {
-    let fuzz_method = rng.gen_range(0..3);
+    let fuzz_method = rng.gen_range(0..4);
     let method_name = match fuzz_method {
         0 => {
             bitflip(rng, data_buf, mutation_rate);
@@ -89,6 +113,10 @@ pub fn mutate_input(
             "insertion"
         }
         2 => {
+            deletion(rng, data_buf, mutation_rate);
+            "deletion"
+        }
+        3 => {
             magic(rng, data_buf);
             "magic"
         }

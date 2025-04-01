@@ -19,9 +19,13 @@ const FPE_SIG: i32 = 8; // floating point exception
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
+    // binary path
+    #[arg(short, long)]
+    binary_path: String,
+
     // image path
     #[arg(short, long, default_value = "images/Canon_40D.jpg")]
-    path: String,
+    image_path: String,
 
     // mutation rate
     #[arg(short, long, default_value_t = 0.01)]
@@ -30,6 +34,10 @@ struct Args {
     // number of attempts
     #[arg(short, long, default_value_t = 10_000)]
     attempts: u32,
+
+    // debug
+    #[arg(short, long, default_value_t = false)]
+    debug: bool,
 
     // triage crashes
     #[arg(short, long)]
@@ -53,6 +61,8 @@ fn initialize(path: &str) -> io::Result<(ThreadRng, Vec<u8>)> {
         fs::create_dir(crash_dir)?;
     }
 
+    println!("Created `crashes/` dir");
+
     // create dos dir
     if fs::exists("dos/").unwrap_or(false) {
         fs::remove_dir_all(dos_dir)?;
@@ -61,7 +71,8 @@ fn initialize(path: &str) -> io::Result<(ThreadRng, Vec<u8>)> {
         fs::create_dir(dos_dir)?;
     }
 
-    // create dos dir
+    println!("Created `dos/` dir");
+
     Ok((rng, data))
 }
 
@@ -90,7 +101,7 @@ fn main() -> io::Result<()> {
     let mut avg_time: u128 = 1; // some small time to start out (1 ms)
 
     // init rng and data from input image
-    let (mut rng, data) = initialize(&args.path)?;
+    let (mut rng, data) = initialize(&args.image_path)?;
 
     // this is a mutable buffer that will be reset after every iteration
     // let mut mutate_buffer = vec![0u8; data.len()];
@@ -109,9 +120,7 @@ fn main() -> io::Result<()> {
 
         // execute command and track runtime
         let now = Instant::now();
-        let output = Command::new("binaries/ok-mutate")
-            // .args(["images/mutate.jpg"])
-            .output()?;
+        let output = Command::new(args.binary_path.clone()).output()?;
         let process_time = now.elapsed();
 
         // add new time to avg_time
@@ -127,13 +136,13 @@ fn main() -> io::Result<()> {
             dos_counter += 1;
         }
 
-        // uncomment for debug
-        // if i == 0 {
-        //     println!(
-        //         "stdout for first attempt: {}",
-        //         String::from_utf8_lossy(&output.stdout)
-        //     );
-        // }
+        // print stdout for first attempt if debug is true
+        if args.debug && i == 0 {
+            println!(
+                "stdout for first attempt: {}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+        }
 
         if let Some(signal) = output.status.signal() {
             handle_crash(&mutate_buffer, i, fuzz_method)?;
@@ -151,6 +160,7 @@ fn main() -> io::Result<()> {
             match fuzz_method {
                 "bitflip" => bitflip_events += 1,
                 "insertion" => insertion_events += 1,
+                "deletion" => deletion_events += 1,
                 "magic" => magic_events += 1,
                 _ => unreachable!(),
             }
@@ -164,6 +174,7 @@ Segmentation faults         : {seg_fault_crashes}
 Floating point exceptions   : {floating_point_crashes}
 Issues caused by bitflips   : {bitflip_events}
 Issues caused by insertions : {insertion_events}
+Issues caused by deletions  : {deletion_events}
 Issues caused by magic      : {magic_events}"
     );
 
