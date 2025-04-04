@@ -44,6 +44,19 @@ struct Args {
     triage: bool,
 }
 
+struct FuzzStats {
+    total_crashes: i32,
+    total_doses: i32,
+    // signals received on error
+    seg_faults: i32,
+    floating_points: i32,
+    // specific mutations
+    bitflip_events: i32,
+    insertion_events: i32,
+    deletion_events: i32,
+    magic_events: i32,
+}
+
 fn validate_args(args: &Args) {
     // check for valid binary path, validate it is a file and it hsa executable permissions
     let binary_path = Path::new(&args.binary_path);
@@ -108,27 +121,53 @@ fn initialize(path: &str) -> io::Result<(ThreadRng, Vec<u8>)> {
 fn handle_dos(data: &[u8], index: u32, method: &str, process_time: u128) -> io::Result<()> {
     let path = format!("dos/dos.{process_time}.ms.{method}.{index}.jpg");
     utils::write_to_file(data, &path)?;
+    println!("Created an entry in `dos/`: {path}");
     Ok(())
 }
 
 fn handle_crash(data: &[u8], index: u32, method: &str) -> io::Result<()> {
     let path = format!("crashes/crash.{method}.{index}.jpg");
     utils::write_to_file(data, &path)?;
+    println!("Created an entry in `crashes/`: {path}");
     Ok(())
+}
+
+fn print_stats(stats: &FuzzStats) {
+    println!(
+        "\nFuzzing finished
+Total crashes               : {}
+Total denials of service    : {}
+Segmentation faults         : {}
+Floating point exceptions   : {}
+
+Issues caused by bitflips   : {}
+Issues caused by insertions : {}
+Issues caused by deletions  : {}
+Issues caused by magic      : {}",
+        stats.total_crashes,
+        stats.total_doses,
+        stats.seg_faults,
+        stats.floating_points,
+        stats.bitflip_events,
+        stats.insertion_events,
+        stats.deletion_events,
+        stats.magic_events
+    );
 }
 
 fn main() -> io::Result<()> {
     let args = Args::parse();
-    let mut crash_counter = 0;
-    let mut dos_counter = 0;
-    let mut seg_fault_crashes = 0;
-    let mut floating_point_crashes = 0;
-    let mut bitflip_events = 0;
-    let mut insertion_events = 0;
-    let mut deletion_events = 0;
-    let mut magic_events = 0;
     let mut avg_time: u128 = 1; // some small time to start out (1 ms)
-
+    let mut stats = FuzzStats {
+        total_crashes: 0,
+        total_doses: 0,
+        seg_faults: 0,
+        floating_points: 0,
+        bitflip_events: 0,
+        insertion_events: 0,
+        deletion_events: 0,
+        magic_events: 0,
+    };
     validate_args(&args);
 
     // init rng and data from input image
@@ -140,7 +179,7 @@ fn main() -> io::Result<()> {
     for i in 0..args.attempts {
         // update status
         if i % 100 == 0 {
-            print!("\rAttempt: {i}");
+            print!("\rAttempt: {i}/{}", args.attempts);
             io::stdout().flush()?;
         }
 
@@ -164,7 +203,7 @@ fn main() -> io::Result<()> {
         if i > 100 && process_time.as_millis() > avg_time * 100 {
             handle_dos(&mutate_buffer, i, fuzz_method, process_time.as_millis())?;
             event_occurred = true;
-            dos_counter += 1;
+            stats.total_doses += 1;
         }
 
         // print binary's stdout for first attempt if debug is true
@@ -179,35 +218,26 @@ fn main() -> io::Result<()> {
             handle_crash(&mutate_buffer, i, fuzz_method)?;
             // stats stuff
             match signal {
-                SEG_SIG => seg_fault_crashes += 1,
-                FPE_SIG => floating_point_crashes += 1,
+                SEG_SIG => stats.seg_faults += 1,
+                FPE_SIG => stats.floating_points += 1,
                 _ => println!("Unknown signal encountered: {signal}"),
             }
             event_occurred = true;
-            crash_counter += 1;
+            stats.total_crashes += 1;
         }
 
         if event_occurred {
             match fuzz_method {
-                "bitflip" => bitflip_events += 1,
-                "insertion" => insertion_events += 1,
-                "deletion" => deletion_events += 1,
-                "magic" => magic_events += 1,
+                "bitflip" => stats.bitflip_events += 1,
+                "insertion" => stats.insertion_events += 1,
+                "deletion" => stats.deletion_events += 1,
+                "magic" => stats.magic_events += 1,
                 _ => unreachable!(),
             }
         }
     }
-    println!(
-        "\rFuzzing finished
-Total crashes               : {crash_counter}
-Total denials of service    : {dos_counter}
-Segmentation faults         : {seg_fault_crashes}
-Floating point exceptions   : {floating_point_crashes}
-Issues caused by bitflips   : {bitflip_events}
-Issues caused by insertions : {insertion_events}
-Issues caused by deletions  : {deletion_events}
-Issues caused by magic      : {magic_events}"
-    );
+
+    print_stats(&stats);
 
     // Create reports, i need to find some way to generalize this
     if args.triage {
