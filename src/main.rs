@@ -121,20 +121,31 @@ fn initialize(path: &str) -> io::Result<(ThreadRng, Vec<u8>)> {
 fn handle_dos(data: &[u8], index: u32, method: &str, process_time: u128) -> io::Result<()> {
     let path = format!("dos/dos.{process_time}.ms.{method}.{index}.jpg");
     utils::write_to_file(data, &path)?;
-    println!("Created an entry in `dos/`: {path}");
+    println!("\rCreated an entry in `dos/`: {path}");
     Ok(())
 }
 
 fn handle_crash(data: &[u8], index: u32, method: &str) -> io::Result<()> {
     let path = format!("crashes/crash.{method}.{index}.jpg");
     utils::write_to_file(data, &path)?;
-    println!("Created an entry in `crashes/`: {path}");
+    println!("\rCreated an entry in `crashes/`: {path}");
     Ok(())
 }
 
-fn print_stats(stats: &FuzzStats) {
+fn print_progress(stats: &FuzzStats, current_attempt: u32, total_attempts: u32) -> io::Result<()> {
+    print!(
+        "\rAttempt: {current_attempt}/{}     Total Hits:{}",
+        total_attempts,
+        stats.total_crashes + stats.total_doses
+    );
+    io::stdout().flush()?;
+    Ok(())
+}
+
+fn print_final_stats(stats: &FuzzStats) {
     println!(
-        "\nFuzzing finished
+        "
+======= Fuzzing finished =======
 Total crashes               : {}
 Total denials of service    : {}
 Segmentation faults         : {}
@@ -157,7 +168,7 @@ Issues caused by magic      : {}",
 
 fn main() -> io::Result<()> {
     let args = Args::parse();
-    let mut avg_time: u128 = 1; // some small time to start out (1 ms)
+    let mut avg_time: u128 = 0;
     let mut stats = FuzzStats {
         total_crashes: 0,
         total_doses: 0,
@@ -176,11 +187,10 @@ fn main() -> io::Result<()> {
     // this is a mutable buffer that will be reset after every iteration
     // let mut mutate_buffer = vec![0u8; data.len()];
 
-    for i in 0..args.attempts {
+    for i in 1..args.attempts {
         // update status
-        if i % 100 == 0 {
-            print!("\rAttempt: {i}/{}", args.attempts);
-            io::stdout().flush()?;
+        if i % 10 == 0 {
+            print_progress(&stats, i, args.attempts)?;
         }
 
         // reset buffer and mutate it slightly once again
@@ -189,12 +199,27 @@ fn main() -> io::Result<()> {
         let fuzz_method = mutate::mutate_input(&mut rng, &mut mutate_buffer, args.mutation_rate)?;
 
         // execute command and track runtime
+        // IMPORTANT: if binary requires args, specify them here
         let now = Instant::now();
-        let output = Command::new(args.binary_path.clone()).output()?;
+        let output = Command::new(args.binary_path.clone())
+            .args(["images/original.png", "-o1"])
+            .output()?;
         let process_time = now.elapsed();
 
-        // add new time to avg_time
-        avg_time = (avg_time + (i as u128) + process_time.as_millis()) / (i + 1) as u128;
+        // print binary's stdout for first attempt if debug is true
+        if args.debug && i == 1 {
+            println!(
+                "stdout for first attempt: {}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+        }
+
+        // update avg_time
+        avg_time = if i == 1 {
+            process_time.as_millis()
+        } else {
+            (avg_time + process_time.as_millis()) / 2 as u128
+        };
 
         // check for dos after first 100 attempts
         // TODO: maybe implement a better method than ignoring the first 100 attempts.
@@ -204,14 +229,6 @@ fn main() -> io::Result<()> {
             handle_dos(&mutate_buffer, i, fuzz_method, process_time.as_millis())?;
             event_occurred = true;
             stats.total_doses += 1;
-        }
-
-        // print binary's stdout for first attempt if debug is true
-        if args.debug && i == 0 {
-            println!(
-                "stdout for first attempt: {}",
-                String::from_utf8_lossy(&output.stdout)
-            );
         }
 
         if let Some(signal) = output.status.signal() {
@@ -237,7 +254,7 @@ fn main() -> io::Result<()> {
         }
     }
 
-    print_stats(&stats);
+    print_final_stats(&stats);
 
     // Create reports, i need to find some way to generalize this
     if args.triage {
