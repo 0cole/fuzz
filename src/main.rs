@@ -119,7 +119,7 @@ fn initialize(path: &str) -> io::Result<(ThreadRng, Vec<u8>)> {
 }
 
 fn handle_dos(data: &[u8], index: u32, method: &str, process_time: u128) -> io::Result<()> {
-    let path = format!("dos/dos.{process_time}.ms.{method}.{index}.jpg");
+    let path = format!("dos/dos.{process_time}.micros.{method}.{index}.jpg");
     utils::write_to_file(data, &path)?;
     println!("\rCreated an entry in `dos/`: {path}");
     Ok(())
@@ -201,9 +201,7 @@ fn main() -> io::Result<()> {
         // execute command and track runtime
         // IMPORTANT: if binary requires args, specify them here
         let now = Instant::now();
-        let output = Command::new(args.binary_path.clone())
-            .args(["images/original.png", "-o1"])
-            .output()?;
+        let output = Command::new(args.binary_path.clone()).args([""]).output()?;
         let process_time = now.elapsed();
 
         // print binary's stdout for first attempt if debug is true
@@ -216,17 +214,17 @@ fn main() -> io::Result<()> {
 
         // update avg_time
         avg_time = if i == 1 {
-            process_time.as_millis()
+            process_time.as_micros()
         } else {
-            (avg_time + process_time.as_millis()) / 2 as u128
+            (avg_time * i as u128 + process_time.as_micros()) / (i + 1) as u128
         };
 
         // check for dos after first 100 attempts
         // TODO: maybe implement a better method than ignoring the first 100 attempts.
         // I am assuming that if 100k+ attempts occur, the likelihood of a bug occuring
         // only once within the first 100 attempts is sorta low
-        if i > 100 && process_time.as_millis() > avg_time * 100 {
-            handle_dos(&mutate_buffer, i, fuzz_method, process_time.as_millis())?;
+        if i > 100 && process_time.as_micros() > avg_time * 100 {
+            handle_dos(&mutate_buffer, i, fuzz_method, process_time.as_micros())?;
             event_occurred = true;
             stats.total_doses += 1;
         }
