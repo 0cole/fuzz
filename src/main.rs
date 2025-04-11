@@ -16,6 +16,13 @@ use std::{
 const SEG_SIG: i32 = 11; // seg fault
 const FPE_SIG: i32 = 8; // floating point exception
 
+// change this eventually
+#[derive(Debug)]
+enum ImageType {
+    Jpg,
+    Png,
+}
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -83,6 +90,20 @@ fn validate_args(args: &Args) {
     if mutation_rate >= 1.0 {
         eprintln!("Error: Mutation rate must be a value greater than 0 but less than 1");
         process::exit(1);
+    }
+}
+
+fn validate_input_type(path_string: &String) -> ImageType {
+    let extension_start_pos = path_string.find('.').unwrap();
+    let extension = &path_string.to_string()[extension_start_pos + 1..];
+
+    match extension {
+        "jpeg" | "jpg" => ImageType::Jpg,
+        "png" => ImageType::Png,
+        _ => {
+            eprintln!("Error: Bad file type. This may be thrown if there are multiple periods in the image path");
+            process::exit(1);
+        }
     }
 }
 
@@ -180,6 +201,9 @@ fn main() -> io::Result<()> {
         magic_events: 0,
     };
     validate_args(&args);
+
+    let input_type: ImageType = validate_input_type(&args.image_path);
+    println!("Using input type: {input_type:?}");
 
     // init rng and data from input image
     let (mut rng, data) = initialize(&args.image_path)?;

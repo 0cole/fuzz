@@ -45,7 +45,7 @@ fn insertion(rng: &mut ThreadRng, data: &mut Vec<u8>, insertion_rate: f64) {
     let mut indicies = vec![];
 
     // collect indicies to insert fake bytes at. do so in a bottom-up approach
-    for _ in 4..insertion_num {
+    for _ in 0..insertion_num {
         let chosen_index = rng.gen_range(4..(data.len() - 4));
         indicies.push(chosen_index);
     }
@@ -67,7 +67,7 @@ fn deletion(rng: &mut ThreadRng, data: &mut Vec<u8>, deletion_rate: f64) {
     let deletion_num = (((data.len() as f64) - 4.0) * deletion_rate) as usize;
     let mut indicies = vec![];
 
-    for _ in 4..deletion_num {
+    for _ in 0..deletion_num {
         // in the super unlikely case where every index occurs consecutively at the end,
         // this function will panic, my immediate solution is to generate an index up until
         // the last 'deletion_num' indicies
