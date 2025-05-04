@@ -30,6 +30,10 @@ struct Args {
     #[arg(short, long)]
     binary_path: String,
 
+    // flags passed into the binary
+    #[arg(short, long)]
+    flags: String,
+
     // image path
     #[arg(short, long, default_value = "images/Canon_40D.jpg")]
     image_path: String,
@@ -208,6 +212,13 @@ fn main() -> io::Result<()> {
     // init rng and data from input image
     let (mut rng, data) = initialize(&args.image_path)?;
 
+    // parse the binary_flags arg into a vector
+    let mut flags: Vec<&str> = vec![];
+    let parts = args.flags.split(' ');
+    for part in parts {
+        flags.push(part);
+    }
+
     // this is a mutable buffer that will be reset after every iteration
     // let mut mutate_buffer = vec![0u8; data.len()];
 
@@ -224,9 +235,10 @@ fn main() -> io::Result<()> {
 
         // execute command and track runtime
         // IMPORTANT: if binary requires args, specify them here
-        let now = Instant::now();
+        let start = Instant::now();
+        // turn this into a run_binary function
         let output = Command::new(args.binary_path.clone()).args([""]).output()?;
-        let process_time = now.elapsed();
+        let duration = start.elapsed();
 
         // print binary's stdout for first attempt if debug is true
         if args.debug && i == 1 {
@@ -238,17 +250,17 @@ fn main() -> io::Result<()> {
 
         // update avg_time
         avg_time = if i == 1 {
-            process_time.as_micros()
+            duration.as_micros()
         } else {
-            (avg_time * i as u128 + process_time.as_micros()) / (i + 1) as u128
+            (avg_time * i as u128 + duration.as_micros()) / (i + 1) as u128
         };
 
         // check for dos after first 100 attempts
         // TODO: maybe implement a better method than ignoring the first 100 attempts.
         // I am assuming that if 100k+ attempts occur, the likelihood of a bug occuring
         // only once within the first 100 attempts is sorta low
-        if i > 100 && process_time.as_micros() > avg_time * 100 {
-            handle_dos(&mutate_buffer, i, fuzz_method, process_time.as_micros())?;
+        if i > 100 && duration.as_micros() > avg_time * 100 {
+            handle_dos(&mutate_buffer, i, fuzz_method, duration.as_micros())?;
             event_occurred = true;
             stats.total_doses += 1;
         }
